@@ -316,6 +316,7 @@ ZEND_END_ARG_INFO()
  */
 int restore_cpu_affinity(cpu_set_t * prev_mask);
 int bind_to_cpu(uint32 cpu_id);
+int get_cpu_num();
 
 /**
  * *********************
@@ -449,7 +450,7 @@ PHP_MINIT_FUNCTION(xhprof) {
   hp_register_constants(INIT_FUNC_ARGS_PASSTHRU);
 
   /* Get the number of available logical CPUs. */
-  hp_globals.cpu_num = sysconf(_SC_NPROCESSORS_CONF);
+  hp_globals.cpu_num = get_cpu_num();
 
   /* Get the cpu affinity mask. */
 #ifndef __APPLE__
@@ -1262,6 +1263,45 @@ int bind_to_cpu(uint32 cpu_id) {
   hp_globals.cur_cpu_id = cpu_id;
 
   return 0;
+}
+
+/**
+ * Get number of processors in the system from /proc/stat.
+ *
+ * sysconf() does not work correctly inside LXC containers
+ *
+ * @see https://github.com/libuv/libuv/commit/6798876a6b2c2046d926bd2317284de920e6d124
+ */
+int get_cpu_num() {
+  FILE *f = 0;
+  char buf[1024];
+  int num = 0;
+
+  f = fopen("/proc/stat", "r");
+  if (!f) {
+    goto PROC_STAT_READ_ERROR;
+  }
+
+  if (!fgets(buf,sizeof(buf),f)) {
+    goto PROC_STAT_READ_ERROR;
+  }
+
+  while (fgets(buf,sizeof(buf),f)) {
+    if (strncmp(buf,"cpu",3)) {
+      break;
+    }
+    num++;
+  }
+  fclose(f);
+
+  return num;
+
+PROC_STAT_READ_ERROR:
+  if (f) {
+    fclose(f);
+  }
+
+  return sysconf(_SC_NPROCESSORS_ONLN);
 }
 
 /**
