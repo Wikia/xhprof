@@ -535,6 +535,9 @@ PHP_MINFO_FUNCTION(xhprof)
   len = snprintf(buf, SCRATCH_BUF_LEN, "%d", hp_globals.cpu_num);
   buf[len] = 0;
   php_info_print_table_header(2, "CPU num", buf);
+  len = snprintf(buf, SCRATCH_BUF_LEN, "%d", hp_globals.enabled_cpu_count);
+  buf[len] = 0;
+  php_info_print_table_header(2, "Enabled CPU num", buf);
 
   if (hp_globals.cpu_frequencies) {
     /* Print available cpu frequencies here. */
@@ -1349,7 +1352,7 @@ static inline double get_us_from_tsc(uint64 count, double cpu_frequency) {
  * @author veeve
  */
 static inline uint64 get_tsc_from_us(uint64 usecs, double cpu_frequency) {
-  return (uint64) (usecs * cpu_frequency);
+  return cpu_frequency >= 0 ? (uint64) (usecs * cpu_frequency) : 0;
 }
 
 /**
@@ -1531,7 +1534,7 @@ void hp_mode_sampled_init_cb(TSRMLS_D) {
   struct timeval  now;
   uint64 truncated_us;
   uint64 truncated_tsc;
-  double cpu_freq = hp_globals.cpu_frequencies[hp_globals.cur_cpu_id];
+  double cpu_freq = hp_globals.cpu_frequencies ? hp_globals.cpu_frequencies[hp_globals.cur_cpu_id] : -1.0;
 
   /* Init the last_sample in tsc */
   hp_globals.last_sample_tsc = cycle_timer();
@@ -1620,11 +1623,12 @@ zval * hp_mode_shared_endfn_cb(hp_entry_t *top,
     return (zval *) 0;
   }
 
+  double cpu_freq = hp_globals.cpu_frequencies ? hp_globals.cpu_frequencies[hp_globals.cur_cpu_id] : -1.0;
+
   /* Bump stats in the counts hashtable */
   hp_inc_count(counts, "ct", 1  TSRMLS_CC);
 
-  hp_inc_count(counts, "wt", get_us_from_tsc(tsc_end - top->tsc_start,
-        hp_globals.cpu_frequencies[hp_globals.cur_cpu_id]) TSRMLS_CC);
+  hp_inc_count(counts, "wt", get_us_from_tsc(tsc_end - top->tsc_start, cpu_freq) TSRMLS_CC);
   return counts;
 }
 
