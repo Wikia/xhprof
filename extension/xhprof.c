@@ -1279,12 +1279,12 @@ int bind_to_cpu(uint32 cpu_id) {
  * Get a random cpu from the enabled cpu pool
  */
 int get_random_enabled_cpu() {
-  int cpu_count = hp_globals.enabled_cpu_count, r;
+  int cpu_count = hp_globals.enabled_cpu_count, r, i;
   if (cpu_count == 0) {
     return 0;
   }
   r = rand() % cpu_count;
-  for (int i=0;i<hp_globals.cpu_num;i++) {
+  for (i=0;i<hp_globals.cpu_num;i++) {
     if (CPU_ISSET(i, &hp_globals.enabled_cpus)) {
       if (!r) return i;
       else r--;
