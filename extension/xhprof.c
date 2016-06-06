@@ -1339,7 +1339,7 @@ static void incr_us_interval(struct timeval *start, uint64 incr) {
  * @author cjiang
  */
 static inline double get_us_from_tsc(uint64 count, double cpu_frequency) {
-  return count / cpu_frequency;
+  return cpu_frequency >= 0 ? count / cpu_frequency : 0.0;
 }
 
 /**
