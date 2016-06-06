@@ -207,6 +207,10 @@ typedef struct hp_global_t {
   uint32 cpu_num;
 
   /* The saved cpu affinity. */
+  cpu_set_t enabled_cpus;
+  uint32 enabled_cpu_count;
+
+  /* The saved cpu affinity. */
   cpu_set_t prev_mask;
 
   /* The cpu id current process is bound to. (default 0) */
@@ -316,6 +320,8 @@ ZEND_END_ARG_INFO()
  */
 int restore_cpu_affinity(cpu_set_t * prev_mask);
 int bind_to_cpu(uint32 cpu_id);
+int get_random_enabled_cpu();
+int is_cpu_enabled(uint32 cpu_id);
 
 /**
  * *********************
@@ -533,6 +539,7 @@ PHP_MINFO_FUNCTION(xhprof)
     /* Print available cpu frequencies here. */
     php_info_print_table_header(2, "CPU logical id", " Clock Rate (MHz) ");
     for (i = 0; i < hp_globals.cpu_num; ++i) {
+      if (!is_cpu_enabled(i)) continue;
       len = snprintf(buf, SCRATCH_BUF_LEN, " CPU %d ", i);
       buf[len] = 0;
       len = snprintf(tmp, SCRATCH_BUF_LEN, "%f", hp_globals.cpu_frequencies[i]);
@@ -669,6 +676,10 @@ void hp_init_profiler_state(int level TSRMLS_DC) {
   MAKE_STD_ZVAL(hp_globals.stats_count);
   array_init(hp_globals.stats_count);
 
+  CPU_ZERO(&hp_globals.enabled_cpus);
+  GET_AFFINITY(0, sizeof(cpu_set_t), &hp_globals.enabled_cpus);
+  hp_globals.enabled_cpu_count = CPU_COUNT(&hp_globals.enabled_cpus);
+
   /* NOTE(cjiang): some fields such as cpu_frequencies take relatively longer
    * to initialize, (5 milisecond per logical cpu right now), therefore we
    * calculate them lazily. */
@@ -678,7 +689,7 @@ void hp_init_profiler_state(int level TSRMLS_DC) {
   }
 
   /* bind to a random cpu so that we can use rdtsc instruction. */
-  bind_to_cpu((int) (rand() % hp_globals.cpu_num));
+  bind_to_cpu(get_random_enabled_cpu());
 
   /* Call current mode's init cb */
   hp_globals.mode_cb.init_cb(TSRMLS_C);
@@ -1265,6 +1276,31 @@ int bind_to_cpu(uint32 cpu_id) {
 }
 
 /**
+ * Get a random cpu from the enabled cpu pool
+ */
+int get_random_enabled_cpu() {
+  int cpu_count = hp_globals.enabled_cpu_count, r;
+  if (cpu_count == 0) {
+    return 0;
+  }
+  r = rand() % cpu_count;
+  for (int i=0;i<hp_globals.cpu_num;i++) {
+    if (CPU_ISSET(i, &hp_globals.enabled_cpus)) {
+      if (!r) return i;
+      else r--;
+    }
+  }
+  return 0;
+}
+
+/**
+ * Is the given cpu_id in the enabled cpu pool
+ */
+int is_cpu_enabled(uint32 cpu_id) {
+  return CPU_ISSET(cpu_id, &hp_globals.enabled_cpus);
+}
+
+/**
  * Get time delta in microseconds.
  */
 static long get_us_interval(struct timeval *start, struct timeval *end) {
@@ -1351,6 +1387,8 @@ static void get_all_cpu_frequencies() {
 
   /* Iterate over all cpus found on the machine. */
   for (id = 0; id < hp_globals.cpu_num; ++id) {
+    if (!is_cpu_enabled(id)) continue;
+
     /* Only get the previous cpu affinity mask for the first call. */
     if (bind_to_cpu(id)) {
       clear_frequencies();
