@@ -320,6 +320,7 @@ ZEND_END_ARG_INFO()
  */
 int restore_cpu_affinity(cpu_set_t * prev_mask);
 int bind_to_cpu(uint32 cpu_id);
+void init_enabled_cpus();
 int get_random_enabled_cpu();
 int is_cpu_enabled(uint32 cpu_id);
 
@@ -676,9 +677,7 @@ void hp_init_profiler_state(int level TSRMLS_DC) {
   MAKE_STD_ZVAL(hp_globals.stats_count);
   array_init(hp_globals.stats_count);
 
-  CPU_ZERO(&hp_globals.enabled_cpus);
-  GET_AFFINITY(0, sizeof(cpu_set_t), &hp_globals.enabled_cpus);
-  hp_globals.enabled_cpu_count = CPU_COUNT(&hp_globals.enabled_cpus);
+  init_enabled_cpus();
 
   /* NOTE(cjiang): some fields such as cpu_frequencies take relatively longer
    * to initialize, (5 milisecond per logical cpu right now), therefore we
@@ -1273,6 +1272,15 @@ int bind_to_cpu(uint32 cpu_id) {
   hp_globals.cur_cpu_id = cpu_id;
 
   return 0;
+}
+
+/**
+ * Initialize information about enabled cpus
+ */
+void init_enabled_cpus() {
+  CPU_ZERO(&hp_globals.enabled_cpus);
+  GET_AFFINITY(0, sizeof(cpu_set_t), &hp_globals.enabled_cpus);
+  hp_globals.enabled_cpu_count = CPU_COUNT(&hp_globals.enabled_cpus);
 }
 
 /**
